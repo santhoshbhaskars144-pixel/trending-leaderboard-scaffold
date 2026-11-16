@@ -1,26 +1,20 @@
-// seed.js — load 100 fake posts into the leaderboard so you have data to rank.
-// Run with:  npm run seed
-//
-// Each post needs BOTH:
-//   - a hash  post:<id>:meta  with title + author
-//   - a member in the sorted set trending:posts with a random starting score
-//
-// Use ONE pipeline for all the writes (200 commands, one round trip).
+import { redis } from "./leaderboard.js"; // reuse the shared Redis client from the app
 
-import { redis } from "./leaderboard.js";
+async function seed() { // define the async seeding routine
+  const pipeline = redis.pipeline(); // create one pipeline so all writes go in a single round trip
 
-async function seed() {
-  await redis.del("trending:posts");
+  pipeline.del("trending:posts"); // clear the leaderboard before inserting fresh test data
 
-  // TODO: build a pipeline and, for i = 1..100:
-  //   - HSET post:<i>:meta title "Post number <i>" author "@user<i>"
-  //   - ZADD trending:posts <random 0-49> post:<i>
-  //     (keep the range modest, e.g. Math.floor(Math.random() * 50),
-  //      so a post upvoted 50 times is guaranteed to climb into the top 10)
-  // Then: await pipeline.exec();
+  for (let i = 1; i <= 100; i++) { // generate exactly 100 fake posts
+    const postId = `post:${i}`; // build the post key used in the sorted set
+    pipeline.hset(`post:${i}:meta`, "title", `Post number ${i}`, "author", `@user${i}`); // store the post metadata hash
+    pipeline.zadd("trending:posts", Math.floor(Math.random() * 50), postId); // add the post with a modest random starting score
+  } // finish queuing all post writes
 
-  console.log("Seeded 100 posts.");
-  redis.disconnect();
-}
+  await pipeline.exec(); // send every queued command to Redis at once
 
-seed();
+  console.log("Seeded 100 posts."); // confirm the seed completed successfully
+  redis.disconnect(); // close the Redis connection cleanly
+} // end seed function
+
+seed(); // run the seeding script
